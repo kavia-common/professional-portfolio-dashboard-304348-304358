@@ -25,7 +25,14 @@ def test_admin_users_admin_success(client: TestClient, admin_user):
 
     resp = client.get("/admin/users", headers=auth_headers(token))
     assert resp.status_code == 200
-    users = resp.json()
-    assert isinstance(users, list)
+    body = resp.json()
+
+    assert set(body.keys()) == {"items", "page", "page_size", "total"}
+    assert isinstance(body["items"], list)
+    assert body["page"] == 1
+    assert body["page_size"] >= 1
+    assert body["total"] >= 1
+
+    users = body["items"]
     assert any(u["id"] == admin_user.id for u in users)
     assert all("email" in u and "username" in u and "role" in u for u in users)

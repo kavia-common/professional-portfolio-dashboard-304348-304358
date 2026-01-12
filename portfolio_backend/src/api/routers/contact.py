@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-from typing import Annotated, List
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.api.core.db import get_db
 from src.api.core.models import ContactMessage
 from src.api.deps import require_admin
-from src.api.schemas import ContactMessageCreate, ContactMessageOut, ContactMessageUpdate
+from src.api.pagination import compute_page, count_total
+from src.api.schemas import (
+    ContactMessageCreate,
+    ContactMessageOut,
+    ContactMessageUpdate,
+    PaginatedResponse,
+)
 
 router = APIRouter(prefix="/contact", tags=["contact"])
 
@@ -41,18 +47,30 @@ def submit_contact_message(
 
 @router.get(
     "/messages",
-    response_model=List[ContactMessageOut],
-    summary="List contact messages (admin)",
-    description="List submitted contact messages. Requires admin.",
+    response_model=PaginatedResponse[ContactMessageOut],
+    summary="List contact messages (admin, paginated)",
+    description="List submitted contact messages with pagination. Requires admin.",
     operation_id="contact_list_messages",
 )
 def list_contact_messages(
     _: Annotated[object, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
-) -> List[ContactMessageOut]:
-    """Admin-only list of contact messages."""
-    msgs = db.execute(select(ContactMessage).order_by(ContactMessage.created_at.desc())).scalars().all()
-    return [ContactMessageOut.model_validate(m, from_attributes=True) for m in msgs]
+    page: int = Query(default=1, ge=1, description="1-based page number"),
+    page_size: int = Query(default=20, ge=1, le=100, description="Items per page (max 100)"),
+) -> PaginatedResponse[ContactMessageOut]:
+    """Admin-only list of contact messages with pagination."""
+    base_stmt = select(ContactMessage).order_by(ContactMessage.created_at.desc())
+    total = count_total(db, base_stmt)
+    p = compute_page(page=page, page_size=page_size)
+    stmt = base_stmt.offset(p.offset).limit(p.limit)
+
+    msgs = db.execute(stmt).scalars().all()
+    return PaginatedResponse[ContactMessageOut](
+        items=[ContactMessageOut.model_validate(m, from_attributes=True) for m in msgs],
+        page=p.page,
+        page_size=p.page_size,
+        total=total,
+    )
 
 
 @router.put(

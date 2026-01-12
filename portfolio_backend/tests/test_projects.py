@@ -33,7 +33,10 @@ def test_projects_list_unauthenticated_only_published(client: TestClient, user_c
 
     resp_public = client.get("/projects")
     assert resp_public.status_code == 200
-    titles = [p["title"] for p in resp_public.json()]
+    body = resp_public.json()
+    assert set(body.keys()) == {"items", "page", "page_size", "total"}
+
+    titles = [p["title"] for p in body["items"]]
     assert "Published project" in titles
     assert "Draft project" not in titles
 
@@ -111,3 +114,33 @@ def test_projects_create_invalid_skill_ids_returns_400(client: TestClient, user_
     )
     assert resp.status_code == 400
     assert "skill_ids" in resp.json()["detail"]
+
+
+def test_projects_list_pagination_params_work(client: TestClient, user_credentials):
+    # Create user + token
+    assert register_user(client, **user_credentials)["status"] == 201
+    _, login_payload = login_user(client, username=user_credentials["username"], password=user_credentials["password"])
+    token = login_payload["access_token"]
+
+    # Create multiple published projects
+    for i in range(1, 6):
+        r = _create_project(
+            client,
+            token,
+            {"title": f"P{i}", "description": None, "repo_url": None, "live_url": None, "status": "published", "skill_ids": []},
+        )
+        assert r.status_code == 201
+
+    page1 = client.get("/projects?page=1&page_size=2")
+    assert page1.status_code == 200
+    body1 = page1.json()
+    assert body1["page"] == 1
+    assert body1["page_size"] == 2
+    assert body1["total"] >= 5
+    assert len(body1["items"]) == 2
+
+    page2 = client.get("/projects?page=2&page_size=2")
+    assert page2.status_code == 200
+    body2 = page2.json()
+    assert body2["page"] == 2
+    assert len(body2["items"]) == 2

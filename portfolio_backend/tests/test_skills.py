@@ -8,7 +8,9 @@ from tests.conftest import auth_headers, login_user, register_user
 def test_skills_list_public(client: TestClient):
     resp = client.get("/skills")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    body = resp.json()
+    assert set(body.keys()) == {"items", "page", "page_size", "total"}
+    assert isinstance(body["items"], list)
 
 
 def test_skills_create_requires_admin_403_for_normal_user(client: TestClient, user_credentials):

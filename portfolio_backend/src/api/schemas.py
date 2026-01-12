@@ -1,11 +1,38 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 from src.api.core.models import ContactMessageStatus, ProjectStatus, UserRole
+
+T = TypeVar("T")
+
+
+class PaginationParams(BaseModel):
+    """Common pagination query params."""
+
+    page: int = Field(
+        default=1,
+        ge=1,
+        description="1-based page number (must be >= 1).",
+    )
+    page_size: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Items per page (1..100).",
+    )
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Standard paginated list response shape."""
+
+    items: List[T] = Field(..., description="Items for the current page.")
+    page: int = Field(..., description="Current page (1-based).")
+    page_size: int = Field(..., description="Current page size.")
+    total: int = Field(..., ge=0, description="Total number of matching items.")
 
 
 class TokenResponse(BaseModel):
@@ -29,30 +56,41 @@ class UserCreate(BaseModel):
     """Request model to create a new user account."""
 
     email: EmailStr = Field(..., description="Email address")
-    username: str = Field(..., min_length=3, max_length=50, description="Username")
-    password: str = Field(..., min_length=8, description="Plain password (will be hashed)")
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=50,
+        description="Username (3..50 chars).",
+    )
+    password: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Plain password (8..128 chars; will be hashed).",
+    )
 
 
 class LoginRequest(BaseModel):
     """Request model for login."""
 
-    username: str = Field(..., description="Username")
-    password: str = Field(..., description="Password")
+    username: str = Field(..., min_length=3, max_length=50, description="Username")
+    password: str = Field(..., min_length=1, max_length=128, description="Password")
 
 
 class ProfileBase(BaseModel):
     """Shared profile fields."""
 
-    full_name: Optional[str] = Field(default=None, description="Full name")
-    bio: Optional[str] = Field(default=None, description="Bio")
-    avatar_url: Optional[str] = Field(default=None, description="Avatar URL")
-    location: Optional[str] = Field(default=None, description="Location")
-    website: Optional[str] = Field(default=None, description="Website")
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=100, description="Full name")
+    bio: Optional[str] = Field(default=None, max_length=1000, description="Bio (max 1000 chars)")
+    avatar_url: Optional[HttpUrl] = Field(default=None, description="Avatar URL (must be a valid URL)")
+    location: Optional[str] = Field(default=None, min_length=1, max_length=100, description="Location")
+    website: Optional[HttpUrl] = Field(default=None, description="Website URL (must be a valid URL)")
     socials: Dict[str, Any] = Field(default_factory=dict, description="Social links object")
 
 
 class ProfileUpdate(ProfileBase):
     """Request model to update a profile."""
+
     pass
 
 
@@ -67,20 +105,21 @@ class ProfileOut(ProfileBase):
 class SkillBase(BaseModel):
     """Shared skill fields."""
 
-    name: str = Field(..., description="Skill name")
-    category: Optional[str] = Field(default=None, description="Category (e.g. Backend)")
+    name: str = Field(..., min_length=1, max_length=100, description="Skill name")
+    category: Optional[str] = Field(default=None, min_length=1, max_length=100, description="Category (e.g. Backend)")
     level: int = Field(..., ge=1, le=5, description="Proficiency level from 1 to 5")
 
 
 class SkillCreate(SkillBase):
     """Request model to create a skill."""
+
     pass
 
 
 class SkillUpdate(BaseModel):
     """Request model to update a skill."""
 
-    category: Optional[str] = Field(default=None, description="Category (e.g. Backend)")
+    category: Optional[str] = Field(default=None, min_length=1, max_length=100, description="Category (e.g. Backend)")
     level: Optional[int] = Field(default=None, ge=1, le=5, description="Proficiency level from 1 to 5")
 
 
@@ -94,10 +133,10 @@ class SkillOut(SkillBase):
 class ProjectBase(BaseModel):
     """Shared project fields."""
 
-    title: str = Field(..., description="Project title")
-    description: Optional[str] = Field(default=None, description="Project description")
-    repo_url: Optional[str] = Field(default=None, description="Repository URL")
-    live_url: Optional[str] = Field(default=None, description="Live demo URL")
+    title: str = Field(..., min_length=1, max_length=200, description="Project title")
+    description: Optional[str] = Field(default=None, max_length=5000, description="Project description (max 5000 chars)")
+    repo_url: Optional[HttpUrl] = Field(default=None, description="Repository URL (must be a valid URL)")
+    live_url: Optional[HttpUrl] = Field(default=None, description="Live demo URL (must be a valid URL)")
     status: ProjectStatus = Field(default=ProjectStatus.draft, description="Project status")
 
 
@@ -110,10 +149,10 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     """Request model to update a project."""
 
-    title: Optional[str] = Field(default=None, description="Project title")
-    description: Optional[str] = Field(default=None, description="Project description")
-    repo_url: Optional[str] = Field(default=None, description="Repository URL")
-    live_url: Optional[str] = Field(default=None, description="Live demo URL")
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200, description="Project title")
+    description: Optional[str] = Field(default=None, max_length=5000, description="Project description (max 5000 chars)")
+    repo_url: Optional[HttpUrl] = Field(default=None, description="Repository URL (must be a valid URL)")
+    live_url: Optional[HttpUrl] = Field(default=None, description="Live demo URL (must be a valid URL)")
     status: Optional[ProjectStatus] = Field(default=None, description="Project status")
     skill_ids: Optional[List[int]] = Field(default=None, description="Replace skill associations with these IDs")
 
@@ -131,10 +170,10 @@ class ProjectOut(ProjectBase):
 class ContactMessageCreate(BaseModel):
     """Request model to submit a contact message."""
 
-    sender_name: str = Field(..., description="Sender name")
+    sender_name: str = Field(..., min_length=1, max_length=100, description="Sender name")
     sender_email: EmailStr = Field(..., description="Sender email")
-    subject: Optional[str] = Field(default=None, description="Subject")
-    message: str = Field(..., description="Message body")
+    subject: Optional[str] = Field(default=None, max_length=200, description="Subject (max 200 chars)")
+    message: str = Field(..., min_length=10, max_length=5000, description="Message body (10..5000 chars)")
 
 
 class ContactMessageUpdate(BaseModel):

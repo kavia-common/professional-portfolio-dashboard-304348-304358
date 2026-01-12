@@ -56,7 +56,10 @@ def test_contact_admin_can_list_and_update_status(client: TestClient, admin_user
 
     inbox = client.get("/contact/messages", headers=auth_headers(token))
     assert inbox.status_code == 200
-    ids = [m["id"] for m in inbox.json()]
+    body = inbox.json()
+
+    assert set(body.keys()) == {"items", "page", "page_size", "total"}
+    ids = [m["id"] for m in body["items"]]
     assert message_id in ids
 
     update = client.put(f"/contact/messages/{message_id}", headers=auth_headers(token), json={"status": "read"})
